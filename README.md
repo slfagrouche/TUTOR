@@ -56,7 +56,7 @@ Contributions are welcome! Please fork the repository and create a pull request.
 
 Distributed under the MIT License. See `LICENSE` for more information.
 
-## Contact
+## Contact Our Team
 
-Said Lfagrouche - [Linkedin](https://www.linkedin.com/in/saidlfagrouche/)
-Saad Ahmad Sabri - [Linkedin](https://www.linkedin.com/in/saad-ahmad-sabri-a42669208/)
+- Said Lfagrouche - [Linkedin](https://www.linkedin.com/in/saidlfagrouche/)
+- Saad Ahmad Sabri - [Linkedin](https://www.linkedin.com/in/saad-ahmad-sabri-a42669208/)
