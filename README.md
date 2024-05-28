@@ -1,6 +1,6 @@
-# TOTUR_AI_POWERED_APP
+# TOTUR
 
-TOTUR is an AI-powered application designed to assist users with educational materials by transcribing audio, extracting text from PDFs, and answering questions based on the provided content using advanced AI models and Retrieval-Augmented Generation (RAG).
+TOTUR is an AI-powered educational assistant designed to help users with audio transcription, PDF text extraction, and question answering. It leverages advanced AI models and Retrieval-Augmented Generation (RAG) to provide accurate and contextually relevant responses based on uploaded content.
 
 ## Features
 
@@ -17,11 +17,11 @@ Finding accurate and contextually relevant educational information can be challe
 
 1. Clone the repository:
    ```sh
-   git clone https://github.com/slfagrouche/TOTUR_AI_POWERED_APP.git
+   git clone https://github.com/slfagrouche/TOTUR.git
    ```
 2. Navigate to the project directory:
    ```sh
-   cd TOTUR_AI_POWERED_APP
+   cd TOTUR
    ```
 3. Install the dependencies:
    ```sh
@@ -58,4 +58,3 @@ Distributed under the MIT License. See `LICENSE` for more information.
 ## Contact
 
 Said Lfagrouche - [Linkedin](https://www.linkedin.com/in/saidlfagrouche/)
-
