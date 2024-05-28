@@ -1,0 +1,60 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+.ipynb_checkpoints/
+DockerDesktop/
+
+Procfile/
+
+# Virtual environment
+venv/
+env/
+
+# Distribution / packaging
+*.egg-info/
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+*.cover
+.hypothesis/
+
+# Translations
+*.mo
+*.pot
+
+# Environment variables
+.env
+
+# Flask
+instance/
+.webassets-cache
+
+# IDEs and editors
+.vscode/
+*.swp
+*~
+.idea/
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Logs
+*.log
+logs/

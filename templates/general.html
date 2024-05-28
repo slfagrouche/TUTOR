@@ -1,0 +1,17 @@
+
+{% extends 'layout.html' %}
+{% block content %}
+<h1>Ask the AI Tutor</h1>
+<form action="/general" method="post">
+    <input type="text" name="question" placeholder="What would you like to know?" required>
+    <button type="submit">Ask</button>
+</form>
+{% if response %}
+<div class="response-container">
+    <h2>Response:</h2>
+    <p>{{ response }}</p>
+</div>
+{% endif %}
+{% endblock %}
+
+

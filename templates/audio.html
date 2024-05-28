@@ -1,0 +1,16 @@
+{% extends 'layout.html' %}
+{% block content %}
+<h1>Upload Audio</h1>
+<form action="/audio" method="post" enctype="multipart/form-data">
+    <input type="file" name="audio" accept="audio/*" required>
+    <input type="text" name="question" placeholder="Ask a question..." required>
+    <button type="submit">Submit</button>
+</form>
+{% if response %}
+<div class="response-container">
+    <h2>Response:</h2>
+    <p>{{ response }}</p>
+</div>
+{% endif %}
+{% endblock %}
+

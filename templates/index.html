@@ -1,0 +1,96 @@
+{% extends 'layout.html' %}
+{% block content %}
+<style>
+/* Base styles */
+body, html {
+    height: 100%;
+    margin: 0;
+    font-family: 'Arial', sans-serif;
+    background: linear-gradient(to right, #6a11cb, #2575fc); /* Beautiful 
+gradient background */
+    color: #ffffff; /* Ensures text is readable on the gradient background 
+*/
+}
+
+/* Container for the content */
+.home-container {
+    max-width: 800px; /* Limits the width for better readability on large 
+screens */
+    margin: 40px auto; /* Centers the container */
+    padding: 20px;
+    background-color: rgba(255, 255, 255, 0.8); /* Slightly transparent 
+white for contrast */
+    border-radius: 10px;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2); /* Adds depth with a shadow 
+*/
+    text-align: center; /* Aligns text and buttons to the center */
+}
+
+/* Styling for the title and text */
+.home-title {
+    color: #333;
+    font-size: 32px;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.home-text {
+    font-size: 18px;
+    color: #666;
+    margin-bottom: 20px;
+}
+
+/* Button styling for actions */
+.action-button {
+    font-size: 18px;
+    padding: 12px 24px;
+    color: white;
+    background-color: #5c67f2;
+    border: none;
+    border-radius: 4px;
+    margin: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s, transform 0.2s;
+}
+
+.action-button:hover {
+    background-color: #3e49cb;
+    transform: scale(1.05); /* Slight scale-up on hover for interactive 
+feel */
+}
+
+@media (max-width: 768px) {
+    /* Responsive adjustments for smaller screens */
+    .home-container {
+        margin: 20px;
+        padding: 15px;
+    }
+
+    .home-title, .home-text {
+        padding: 0 10px; /* Ensures padding inside the container */
+    }
+
+    .action-button {
+        width: 100%; /* Full width buttons on smaller devices */
+        margin-top: 10px;
+    }
+}
+
+/* Additional CSS here */
+</style>
+<div class="home-container">
+    <h1 class="home-title">Welcome to Your AI Tutor</h1>
+    <p class="home-text">Select an option below to explore AI 
+functionalities or ask a question directly.</p>
+    <div class="home-actions">
+        <button onclick="location.href='/general'" 
+class="action-button">Ask a Question</button>
+        <button onclick="location.href='/audio'" 
+class="action-button">Upload Audio</button>
+        <button onclick="location.href='/pdf'" 
+class="action-button">Upload PDF</button>
+    </div>
+</div>
+{% endblock %}
+
+

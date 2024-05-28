@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h3>Ask a Question</h3>
+<form action="{{ url_for('ask_question') }}" method="post">
+    <label for="api_key">API Key:</label>
+    <input type="password" id="api_key" name="api_key" required>
+    <label for="question">Your Question:</label>
+    <input type="text" id="question" name="question" required>
+    <button type="submit">Submit</button>
+</form>
+{% if response %}
+    <div id="response">
+        <p>{{ response }}</p>
+    </div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,11 @@
+Flask
+torch
+transformers
+PyPDF2
+langchain
+langchain-google-genai
+faiss-cpu
+pydub
+librosa
+requests
+python-dotenv

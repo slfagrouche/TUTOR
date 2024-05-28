@@ -1,0 +1,17 @@
+{% extends 'layout.html' %}
+{% block content %}
+<h1>Upload PDFs</h1>
+<form action="/pdf" method="post" enctype="multipart/form-data">
+    <input type="file" name="pdf" multiple accept="application/pdf" required>
+    <input type="text" name="question" placeholder="Ask a question..." required>
+    <button type="submit">Submit</button>
+</form>
+{% if response %}
+<div class="response-container">
+    <h2>Response:</h2>
+    <p>{{ response }}</p>
+</div>
+{% endif %}
+{% endblock %}
+
+
