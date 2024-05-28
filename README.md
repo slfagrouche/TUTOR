@@ -1,4 +1,5 @@
 # TOTUR
+![alt text](TOTUR.png)
 
 TOTUR is an AI-powered educational assistant designed to help users with audio transcription, PDF text extraction, and question answering. It leverages advanced AI models and Retrieval-Augmented Generation (RAG) to provide accurate and contextually relevant responses based on uploaded content.
 
