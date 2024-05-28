@@ -59,3 +59,4 @@ Distributed under the MIT License. See `LICENSE` for more information.
 ## Contact
 
 Said Lfagrouche - [Linkedin](https://www.linkedin.com/in/saidlfagrouche/)
+Saad Ahmad Sabri - [Linkedin](https://www.linkedin.com/in/saad-ahmad-sabri-a42669208/)
