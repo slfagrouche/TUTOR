@@ -1,7 +1,7 @@
-# TOTUR
+# TUTOR
 ![alt text](TOTUR.png)
 
-TOTUR is an AI-powered educational assistant designed to help users with audio transcription, PDF text extraction, and question answering. It leverages advanced AI models and Retrieval-Augmented Generation (RAG) to provide accurate and contextually relevant responses based on uploaded content.
+TUTOR is an AI-powered educational assistant designed to help users with audio transcription, PDF text extraction, and question answering. It leverages advanced AI models and Retrieval-Augmented Generation (RAG) to provide accurate and contextually relevant responses based on uploaded content.
 
 ## Features
 
@@ -10,19 +10,19 @@ TOTUR is an AI-powered educational assistant designed to help users with audio t
 - **Question Answering**: Get detailed responses to questions based on the content of audio or PDF files using RAG.
 - **General AI Tutor**: Ask general questions and receive AI-generated responses.
 
-## Pitch: Why TOTUR is Different
+## Pitch: Why TUTOR is Different
 
-Finding accurate and contextually relevant educational information can be challenging with traditional LLM applications. TOTUR leverages Retrieval-Augmented Generation (RAG) to combine the power of large language models with a curated knowledge base. This ensures that the responses are not only generated based on the AI's training data but also grounded in the specific content provided by the user, whether it be from audio transcriptions or PDF text extractions. This approach significantly enhances the accuracy and relevance of the information provided.
+Finding accurate and contextually relevant educational information can be challenging with traditional LLM applications. TUTOR leverages Retrieval-Augmented Generation (RAG) to combine the power of large language models with a curated knowledge base. This ensures that the responses are not only generated based on the AI's training data but also grounded in the specific content provided by the user, whether it be from audio transcriptions or PDF text extractions. This approach significantly enhances the accuracy and relevance of the information provided.
 
 ## Installation
 
 1. Clone the repository:
    ```sh
-   git clone https://github.com/slfagrouche/TOTUR.git
+   git clone https://github.com/slfagrouche/TUTOR.git
    ```
 2. Navigate to the project directory:
    ```sh
-   cd TOTUR
+   cd TUTOR
    ```
 3. Install the dependencies:
    ```sh
