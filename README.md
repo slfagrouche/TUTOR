@@ -1,5 +1,6 @@
 # TUTOR
-![alt text]((https://github.com/slfagrouche/TUTOR/assets/105510022/186e9d1b-20cb-47b4-9718-a2611ecbb46a)
+![alt text](![image](h[ttps://github.com/slfagrouche/TUTOR/assets/105510022/11a0fedf-a723-4cd5-8115-f31c4631f3f3](https://github-production-user-asset-6210df.s3.amazonaws.com/105510022/341986987-11a0fedf-a723-4cd5-8115-f31c4631f3f3.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20240622%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20240622T173331Z&X-Amz-Expires=300&X-Amz-Signature=ea658c98265c3e28069c6e215d24232b921e74d101fefdd2bed7150570a3a36b&X-Amz-SignedHeaders=host&actor_id=105510022&key_id=0&repo_id=806923151))
+
 )
 
 TUTOR is an AI-powered educational assistant designed to help users with audio transcription, PDF text extraction, and question answering. It leverages advanced AI models and Retrieval-Augmented Generation (RAG) to provide accurate and contextually relevant responses based on uploaded content.
