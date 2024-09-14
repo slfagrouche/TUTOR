@@ -3,19 +3,23 @@
     "builds": [
       {
         "src": "app.py",
-        "use": "@vercel/python"
+        "use": "@vercel/python",
+        "config": {
+          "maxLambdaSize": "4mb" 
       }
     ],
     "routes": [
       {
+        "src": "/static/(.*)",
+        "dest": "/static/$1",
+        "headers": {
+          "Cache-Control": "public, max-age=3600"
+        }
+      },
+      {
         "src": "/(.*)",
         "dest": "/app.py"
       }
-    ],
-    "functions": {
-      "api/**/*.py": {
-        "maxDuration": 60
-      }
-    }
+    ]
   }
   
