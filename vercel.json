@@ -11,6 +11,11 @@
         "src": "/(.*)",
         "dest": "/app.py"
       }
-    ]
+    ],
+    "functions": {
+      "api/**/*.py": {
+        "maxDuration": 10
+      }
+    }
   }
   
