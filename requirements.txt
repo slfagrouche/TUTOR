@@ -1,14 +1,11 @@
-Flask==3.0.0
-Werkzeug==3.0.1
-pydub==0.25.1
-torch==2.2.0
-torchaudio==2.2.0
+Flask
+torch==2.2.0 --index-url https://download.pytorch.org/whl/cpu
+torchaudio==2.2.0 --index-url https://download.pytorch.org/whl/cpu
 transformers==4.37.2
-PyPDF2==3.0.1
-langchain==0.1.0
-langchain-google-genai==0.0.7
-faiss-cpu==1.7.4
-librosa==0.10.1
-numpy==1.26.3
-requests==2.31.0
-python-dotenv==1.0.0
+PyPDF2
+langchain
+langchain-google-genai
+soundfile
+numpy
+requests
+python-dotenv

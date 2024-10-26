@@ -1,19 +1,19 @@
 import os
-from pydub import AudioSegment
-import io
 from flask import Flask, request, render_template
 import torch
-from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
+import torchaudio
+from transformers import pipeline, AutoProcessor
 from PyPDF2 import PdfReader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-from langchain.vectorstores import FAISS
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
-import librosa
+import soundfile as sf
+import numpy as np
 import requests
 from dotenv import load_dotenv
 from functools import lru_cache
+import wave
 
 load_dotenv()
 app = Flask(__name__)
@@ -26,24 +26,12 @@ hf_api_key = os.getenv("HF_API_KEY")
 @lru_cache(maxsize=1)
 def get_asr_pipeline():
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
     
-    model = AutoModelForSpeechSeq2Seq.from_pretrained(
-        "openai/whisper-large-v3",
-        torch_dtype=torch_dtype,
-        use_safetensors=True,
-        low_cpu_mem_usage=True
-    )
-    model.to(device)
-    processor = AutoProcessor.from_pretrained("openai/whisper-large-v3")
-    
+    # Use smaller whisper model
     return pipeline(
         "automatic-speech-recognition",
-        model=model,
-        tokenizer=processor.tokenizer,
-        feature_extractor=processor.feature_extractor,
+        model="openai/whisper-base",
         device=device,
-        chunk_length_s=30  # Process audio in chunks
     )
 
 @lru_cache(maxsize=1)
@@ -53,95 +41,111 @@ def get_embeddings_model():
         google_api_key=google_api_key
     )
 
-def convert_mp3_to_wav(mp3_audio):
-    """Convert MP3 to WAV with reduced quality for smaller size"""
-    mp3_sound = AudioSegment.from_file(mp3_audio.stream, format="mp3")
-    # Reduce to mono and lower sample rate
-    mp3_sound = mp3_sound.set_channels(1).set_frame_rate(16000)
-    buffer = io.BytesIO()
-    mp3_sound.export(buffer, format="wav", parameters=["-q:a", "0"])
-    buffer.seek(0)
-    return buffer
+def convert_mp3_to_wav(mp3_file):
+    """Convert MP3 to WAV using basic wave operations"""
+    # Read MP3 file using torchaudio (smaller than pydub)
+    waveform, sample_rate = torchaudio.load(mp3_file.stream)
+    
+    # Convert to mono and resample to 16kHz
+    if waveform.shape[0] > 1:
+        waveform = torch.mean(waveform, dim=0, keepdim=True)
+    
+    if sample_rate != 16000:
+        resampler = torchaudio.transforms.Resample(sample_rate, 16000)
+        waveform = resampler(waveform)
+    
+    # Save as WAV
+    wav_buffer = wave.open(mp3_file.stream, 'wb')
+    wav_buffer.setnchannels(1)
+    wav_buffer.setsampwidth(2)
+    wav_buffer.setframerate(16000)
+    wav_buffer.writeframes(waveform.numpy().tobytes())
+    return wav_buffer
 
 def transcribe_audio(audio):
     """Transcribe audio with optimized settings"""
     if audio.filename.endswith('.mp3'):
         audio = convert_mp3_to_wav(audio)
     
-    # Load audio with reduced quality
-    audio_data, sr = librosa.load(audio, sr=16000, mono=True)
+    # Load audio directly with soundfile (smaller than librosa)
+    audio_data, sr = sf.read(audio)
+    if sr != 16000:
+        # Simple resampling using numpy
+        audio_data = np.interp(
+            np.linspace(0, len(audio_data), int(len(audio_data) * 16000/sr)),
+            np.arange(len(audio_data)),
+            audio_data
+        )
     
-    # Process in chunks to reduce memory usage
     asr_pipeline = get_asr_pipeline()
     result = asr_pipeline(
-        {"array": audio_data, "sampling_rate": sr},
-        batch_size=8,
-        return_timestamps=False  # Disable if not needed
+        {"array": audio_data, "sampling_rate": 16000},
+        batch_size=8
     )
     return result['text']
 
 def get_pdf_text(pdf_file):
-    """Extract text from PDF with optimized memory usage"""
-    text_chunks = []
+    """Extract text from PDF with minimal memory usage"""
+    text = []
     pdf_reader = PdfReader(pdf_file, strict=False)
     
     for page in pdf_reader.pages:
         chunk = page.extract_text()
         if chunk:
-            # Basic cleaning to reduce noise
-            chunk = ' '.join(chunk.split())
-            text_chunks.append(chunk)
+            text.append(' '.join(chunk.split()))
     
-    return ' '.join(text_chunks)
+    return ' '.join(text)
 
 def process_text(raw_text, user_question):
-    """Process text with optimized chunking and embedding"""
-    # Use larger chunk size to reduce number of embeddings
-    text_splitter = RecursiveCharacterTextSplitter(
+    """Process text with minimal memory usage"""
+    chunks = RecursiveCharacterTextSplitter(
         chunk_size=20000,
         chunk_overlap=1000,
         length_function=len
-    )
-    chunks = text_splitter.split_text(raw_text)
+    ).split_text(raw_text)
     
-    # Create and search vector store
-    vector_store = FAISS.from_texts(
-        chunks,
-        embedding=get_embeddings_model()
-    )
+    embeddings = get_embeddings_model()
+    # Use simple cosine similarity instead of FAISS
+    query_embedding = embeddings.embed_query(user_question)
     
-    # Limit number of returned documents
-    docs = vector_store.similarity_search(user_question, k=2)
+    # Simple vector similarity search
+    chunk_embeddings = [embeddings.embed_query(chunk) for chunk in chunks]
+    similarities = [
+        np.dot(query_embedding, chunk_emb) / 
+        (np.linalg.norm(query_embedding) * np.linalg.norm(chunk_emb))
+        for chunk_emb in chunk_embeddings
+    ]
     
-    # Use simplified prompt template
+    # Get top 2 most similar chunks
+    top_indices = np.argsort(similarities)[-2:]
+    relevant_chunks = [chunks[i] for i in top_indices]
+    
     prompt = PromptTemplate(
         template="Context:\n{context}\n\nQuestion: {question}\n\nAnswer:",
         input_variables=["context", "question"]
     )
     
-    # Initialize model with lower temperature
     model = ChatGoogleGenerativeAI(
         model="gemini-pro",
         temperature=0.3,
         google_api_key=google_api_key,
-        max_output_tokens=1024  # Limit response length
+        max_output_tokens=1024
     )
     
     chain = load_qa_chain(model, prompt=prompt)
     response = chain(
-        {"input_documents": docs, "question": user_question},
+        {"input_documents": [{"page_content": c} for c in relevant_chunks], 
+         "question": user_question},
         return_only_outputs=True
     )
     
     return response["output_text"]
 
 def process_audio(audio, question):
-    """Process audio files with optimized memory usage"""
     transcription = transcribe_audio(audio)
     return process_text(transcription, question)
 
 def process_pdfs(pdfs, question):
-    """Process PDFs with optimized memory usage"""
     extracted_text = ' '.join(get_pdf_text(pdf) for pdf in pdfs)
     return process_text(extracted_text, question)
 
@@ -173,13 +177,11 @@ def get_general_response(question):
     API_URL = "https://api-inference.huggingface.co/models/google/gemma-1.1-7b-it"
     headers = {"Authorization": f"Bearer {hf_api_key}"}
     
-    prompt = f"Question: {question}\nAnswer:"
-    
     response = requests.post(
         API_URL,
         headers=headers,
         json={
-            "inputs": prompt,
+            "inputs": f"Question: {question}\nAnswer:",
             "parameters": {"max_length": 1024, "temperature": 0.3}
         }
     )
@@ -194,4 +196,4 @@ def general():
     return render_template('general.html', response=None)
 
 if __name__ == '__main__':
-    app.run(debug=False)  # Disable debug mode in production
+    app.run(debug=False)
