@@ -1,11 +1,11 @@
 Flask
-torch
-transformers
+torch==2.2.0 --index-url https://download.pytorch.org/whl/cpu
+torchaudio==2.2.0 --index-url https://download.pytorch.org/whl/cpu
+transformers==4.37.2
 PyPDF2
 langchain
 langchain-google-genai
-faiss-cpu
-pydub
-librosa
+soundfile
+numpy
 requests
 python-dotenv
