@@ -9,174 +9,148 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain.vectorstores import FAISS
 from langchain.chains.question_answering import load_qa_chain
-from lxangchain.prompts import PromptTemplate
+from langchain.prompts import PromptTemplate
 import librosa
 import requests
 from dotenv import load_dotenv
+from functools import lru_cache
 
 load_dotenv()
-
 app = Flask(__name__)
 
 # Load API keys from environment variables
 google_api_key = os.getenv("GOOGLE_API_KEY")
 hf_api_key = os.getenv("HF_API_KEY")
 
-# Initialize and configure the Whisper and PDF processing tools
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
-torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+# Initialize models only once and cache them
+@lru_cache(maxsize=1)
+def get_asr_pipeline():
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+    
+    model = AutoModelForSpeechSeq2Seq.from_pretrained(
+        "openai/whisper-large-v3",
+        torch_dtype=torch_dtype,
+        use_safetensors=True,
+        low_cpu_mem_usage=True
+    )
+    model.to(device)
+    processor = AutoProcessor.from_pretrained("openai/whisper-large-v3")
+    
+    return pipeline(
+        "automatic-speech-recognition",
+        model=model,
+        tokenizer=processor.tokenizer,
+        feature_extractor=processor.feature_extractor,
+        device=device,
+        chunk_length_s=30  # Process audio in chunks
+    )
 
-# Load Whisper model
-model_id = "openai/whisper-large-v3"
-model = AutoModelForSpeechSeq2Seq.from_pretrained(model_id, torch_dtype=torch_dtype, use_safetensors=True)
-model.to(device)
-processor = AutoProcessor.from_pretrained(model_id)
-
-# Define the ASR pipeline
-asr_pipeline = pipeline("automatic-speech-recognition", model=model, tokenizer=processor.tokenizer,
-                        feature_extractor=processor.feature_extractor, device=device)
+@lru_cache(maxsize=1)
+def get_embeddings_model():
+    return GoogleGenerativeAIEmbeddings(
+        model="models/embedding-001",
+        google_api_key=google_api_key
+    )
 
 def convert_mp3_to_wav(mp3_audio):
-    """
-    Convert an MP3 audio file to WAV format.
-
-    Args:
-        mp3_audio (FileStorage): MP3 audio file uploaded by the user.
-
-    Returns:
-        BytesIO: WAV audio file.
-    """
-    mp3_path = mp3_audio.stream
-    mp3_sound = AudioSegment.from_file(mp3_path, format="mp3")
+    """Convert MP3 to WAV with reduced quality for smaller size"""
+    mp3_sound = AudioSegment.from_file(mp3_audio.stream, format="mp3")
+    # Reduce to mono and lower sample rate
+    mp3_sound = mp3_sound.set_channels(1).set_frame_rate(16000)
     buffer = io.BytesIO()
-    mp3_sound.export(buffer, format="wav")
+    mp3_sound.export(buffer, format="wav", parameters=["-q:a", "0"])
     buffer.seek(0)
     return buffer
 
 def transcribe_audio(audio):
-    """
-    Transcribe an audio file to text using the ASR pipeline.
-
-    Args:
-        audio (FileStorage): Audio file uploaded by the user.
-
-    Returns:
-        str: Transcribed text from the audio.
-    """
+    """Transcribe audio with optimized settings"""
     if audio.filename.endswith('.mp3'):
         audio = convert_mp3_to_wav(audio)
     
-    audio_data, sr = librosa.load(audio, sr=16000)
-    result = asr_pipeline({"array": audio_data, "sampling_rate": sr})
+    # Load audio with reduced quality
+    audio_data, sr = librosa.load(audio, sr=16000, mono=True)
+    
+    # Process in chunks to reduce memory usage
+    asr_pipeline = get_asr_pipeline()
+    result = asr_pipeline(
+        {"array": audio_data, "sampling_rate": sr},
+        batch_size=8,
+        return_timestamps=False  # Disable if not needed
+    )
     return result['text']
 
 def get_pdf_text(pdf_file):
-    """
-    Extract text from a PDF file.
-
-    Args:
-        pdf_file (FileStorage): PDF file uploaded by the user.
-
-    Returns:
-        str: Extracted text from the PDF.
-    """
-    text = ""
-    pdf_reader = PdfReader(pdf_file)
+    """Extract text from PDF with optimized memory usage"""
+    text_chunks = []
+    pdf_reader = PdfReader(pdf_file, strict=False)
+    
     for page in pdf_reader.pages:
-        page_text = page.extract_text()
-        if page_text:
-            text += page_text
-    return text
+        chunk = page.extract_text()
+        if chunk:
+            # Basic cleaning to reduce noise
+            chunk = ' '.join(chunk.split())
+            text_chunks.append(chunk)
+    
+    return ' '.join(text_chunks)
+
+def process_text(raw_text, user_question):
+    """Process text with optimized chunking and embedding"""
+    # Use larger chunk size to reduce number of embeddings
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=20000,
+        chunk_overlap=1000,
+        length_function=len
+    )
+    chunks = text_splitter.split_text(raw_text)
+    
+    # Create and search vector store
+    vector_store = FAISS.from_texts(
+        chunks,
+        embedding=get_embeddings_model()
+    )
+    
+    # Limit number of returned documents
+    docs = vector_store.similarity_search(user_question, k=2)
+    
+    # Use simplified prompt template
+    prompt = PromptTemplate(
+        template="Context:\n{context}\n\nQuestion: {question}\n\nAnswer:",
+        input_variables=["context", "question"]
+    )
+    
+    # Initialize model with lower temperature
+    model = ChatGoogleGenerativeAI(
+        model="gemini-pro",
+        temperature=0.3,
+        google_api_key=google_api_key,
+        max_output_tokens=1024  # Limit response length
+    )
+    
+    chain = load_qa_chain(model, prompt=prompt)
+    response = chain(
+        {"input_documents": docs, "question": user_question},
+        return_only_outputs=True
+    )
+    
+    return response["output_text"]
 
 def process_audio(audio, question):
-    """
-    Process an audio file and answer a question based on its content.
-
-    Args:
-        audio (FileStorage): Audio file uploaded by the user.
-        question (str): User's question.
-
-    Returns:
-        str: Transcription and response based on the audio content.
-    """
+    """Process audio files with optimized memory usage"""
     transcription = transcribe_audio(audio)
-    response = answer_question(question, None, transcription)
-    return "Audio transcription and response: " + response
+    return process_text(transcription, question)
 
 def process_pdfs(pdfs, question):
-    """
-    Process PDF files and answer a question based on their content.
-
-    Args:
-        pdfs (list of FileStorage): List of PDF files uploaded by the user.
-        question (str): User's question.
-
-    Returns:
-        str: Extracted text and response based on the PDF content.
-    """
-    extracted_text = ""
-    for pdf in pdfs:
-        extracted_text += get_pdf_text(pdf)
-    response = answer_question(question, extracted_text, None)
-    return "PDF content and response: " + response
-
-def answer_question(user_question, pdf_text, audio_text):
-    """
-    Answer a user's question based on provided PDF or audio content.
-
-    Args:
-        user_question (str): User's question.
-        pdf_text (str): Text extracted from PDF files.
-        audio_text (str): Transcribed text from audio files.
-
-    Returns:
-        str: Response to the user's question.
-    """
-    raw_text = (pdf_text if pdf_text else "") + (audio_text if audio_text else "")
-    if raw_text == "":
-        return "No content to process. Please upload a PDF or audio file."
-
-    text_chunks = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=1000).split_text(raw_text)
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=google_api_key)
-    vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
-    docs = vector_store.similarity_search(user_question)
-
-    prompt_template = """
-    Based on the educational material provided—answer the student's question in detail.
-
-    Uploaded Educational Material:
-    {context}
-
-    Student's Question:
-    {question}
-
-    Tutor's Response:
-    """
-    model = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.5, google_api_key=google_api_key)
-    prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
-    chain = load_qa_chain(model, prompt=prompt)
-
-    response = chain({"input_documents": docs, "question": user_question}, return_only_outputs=True)
-    return response["output_text"]
+    """Process PDFs with optimized memory usage"""
+    extracted_text = ' '.join(get_pdf_text(pdf) for pdf in pdfs)
+    return process_text(extracted_text, question)
 
 @app.route('/')
 def index():
-    """
-    Render the index page.
-
-    Returns:
-        str: Rendered HTML template for the index page.
-    """
     return render_template('index.html')
 
 @app.route('/audio', methods=['GET', 'POST'])
 def audio():
-    """
-    Handle audio file uploads and process them to answer a user's question.
-
-    Returns:
-        str: Rendered HTML template with the response.
-    """
     if request.method == 'POST':
         audio = request.files['audio']
         question = request.form.get('question')
@@ -186,12 +160,6 @@ def audio():
 
 @app.route('/pdf', methods=['GET', 'POST'])
 def pdf():
-    """
-    Handle PDF file uploads and process them to answer a user's question.
-
-    Returns:
-        str: Rendered HTML template with the response.
-    """
     if request.method == 'POST':
         pdfs = request.files.getlist('pdf')
         question = request.form.get('question')
@@ -199,43 +167,31 @@ def pdf():
         return render_template('pdf.html', response=response)
     return render_template('pdf.html', response=None)
 
+@lru_cache(maxsize=100)
+def get_general_response(question):
+    """Cache general responses to reduce API calls"""
+    API_URL = "https://api-inference.huggingface.co/models/google/gemma-1.1-7b-it"
+    headers = {"Authorization": f"Bearer {hf_api_key}"}
+    
+    prompt = f"Question: {question}\nAnswer:"
+    
+    response = requests.post(
+        API_URL,
+        headers=headers,
+        json={
+            "inputs": prompt,
+            "parameters": {"max_length": 1024, "temperature": 0.3}
+        }
+    )
+    return response.json()[0]['generated_text']
+
 @app.route('/general', methods=['GET', 'POST'])
 def general():
-    """
-    Handle general questions and provide responses using an AI model.
-
-    Returns:
-        str: Rendered HTML template with the response.
-    """
     if request.method == 'POST':
         question = request.form.get('question')
-        response = answer_general_question(question)
+        response = get_general_response(question)
         return render_template('general.html', response=response)
     return render_template('general.html', response=None)
 
-def answer_general_question(user_question):
-    """
-    Answer a general question using an AI model.
-
-    Args:
-        user_question (str): User's question.
-
-    Returns:
-        str: AI-generated response to the question.
-    """
-    API_URL = "https://api-inference.huggingface.co/models/google/gemma-1.1-7b-it"
-    headers = {"Authorization": f"Bearer {hf_api_key}"}
-
-    prompt = f"You are General AI Tutor, helping students with homework and general questions. Student question: {user_question}. Response: should be clear and detailed."
-
-    def query(payload):
-        response = requests.post(API_URL, headers=headers, json=payload)
-        return response.json()
-
-    output = query({"inputs": prompt})
-    return f"AI Response: '{output[0]['generated_text']}'"
-
 if __name__ == '__main__':
-    app.run(debug=True)
-
-
+    app.run(debug=False)  # Disable debug mode in production
