@@ -34,4 +34,5 @@ pathlib>=1.0.1
 accelerate>=0.27.2
 optimum>=1.16.1
 bitsandbytes>=0.42.0
-scipy>=1.12.
+scipy>=1.12.0
+

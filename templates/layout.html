@@ -7,16 +7,26 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
+    <header>
+        <h1></h1>
+    </header>
     <div class="sidebar">
-        <a href="{{ url_for('index') }}">Home</a>
-        <a href="{{ url_for('audio') }}">Upload Audio</a>
-        <a href="{{ url_for('pdf') }}">Upload PDFs</a>
-        <a href="{{ url_for('general') }}">General Questions</a>
-        <a href="{{ url_for('apikey') }}">API Keys</a>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('index') }}">Home</a></li>
+                <li><a href="{{ url_for('audio') }}">Upload Audio</a></li>
+                <li><a href="{{ url_for('pdf') }}">Upload PDFs</a></li>
+                <li><a href="{{ url_for('general') }}">General Questions</a></li>
+                <li><a href="{{ url_for('apikey') }}">API Keys</a></li>
+            </ul>
+        </nav>
     </div>
     <div class="content">
         {% block content %}
         {% endblock %}
     </div>
+    <footer>
+        <p>&copy; 2024 AI Tutor. All rights reserved.</p>
+    </footer>
 </body>
 </html>
