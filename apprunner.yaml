@@ -10,7 +10,7 @@ run:
   command: python -m flask run --host=0.0.0.0 --port=8080
   network:
     port: 8080
-  environment-variables:
+  env:                     # Changed from environment-variables to env
     - name: FLASK_APP
       value: app.py
     - name: FLASK_ENV
