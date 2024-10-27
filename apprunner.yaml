@@ -11,5 +11,7 @@ run:
   network:
     port: 8080
   env:
-    FLASK_APP: app.py
-    FLASK_ENV: production
+    - name: FLASK_APP
+      value: app.py
+    - name: FLASK_ENV
+      value: production
