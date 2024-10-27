@@ -6,7 +6,7 @@ build:
       - pip install --upgrade pip
       - pip install -r requirements.txt
 run:
-  runtime-version: 3.9
+  runtime-version: 3.11
   command: python -m flask run --host=0.0.0.0 --port=8080
   network:
     port: 8080
