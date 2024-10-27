@@ -1,0 +1,157 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto p-6 bg-white rounded-lg shadow-sm">
+    <h1 class="text-2xl font-bold mb-6 text-gray-800">API Key Management</h1>
+    
+    <form action="/apikey" method="post" id="apiKeyForm">
+        <!-- Google API Key Section -->
+        <div class="mb-6">
+            <label for="google_api_key" class="block text-sm font-medium text-gray-700 mb-2">
+                Google API Key
+            </label>
+            <div class="relative">
+                <input 
+                    type="password" 
+                    id="google_api_key" 
+                    name="google_api_key" 
+                    class="w-full px-4 py-2.5 border border-gray-300 rounded-lg pr-24 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Enter Google API Key" 
+                    required
+                >
+                <button 
+                    type="button" 
+                    class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors"
+                    onclick="togglePassword('google_api_key')"
+                >
+                    View Key
+                </button>
+            </div>
+            <p class="mt-1 text-sm text-gray-500">Required for accessing Gemini Pro services</p>
+        </div>
+
+        <!-- Hugging Face API Key Section -->
+        <div class="mb-6">
+            <label for="hf_api_key" class="block text-sm font-medium text-gray-700 mb-2">
+                Hugging Face API Key
+            </label>
+            <div class="relative">
+                <input 
+                    type="password" 
+                    id="hf_api_key" 
+                    name="hf_api_key" 
+                    class="w-full px-4 py-2.5 border border-gray-300 rounded-lg pr-24 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Enter Hugging Face API Key" 
+                    required
+                >
+                <button 
+                    type="button" 
+                    class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors"
+                    onclick="togglePassword('hf_api_key')"
+                >
+                    View Key
+                </button>
+            </div>
+            <p class="mt-1 text-sm text-gray-500">Required for accessing Hugging Face models</p>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="space-y-4 mt-8">
+            <!-- Primary Action -->
+            <button 
+                type="submit" 
+                class="w-full px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            >
+                Update API Keys
+            </button>
+
+            <!-- API Key Links -->
+            <div class="grid grid-cols-2 gap-4">
+                <button 
+                    type="button"
+                    onclick="window.open('https://makersuite.google.com/app/apikey', '_blank')"
+                    class="px-4 py-2.5 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors text-sm font-medium"
+                >
+                    Get Google Key
+                </button>
+                <button 
+                    type="button"
+                    onclick="window.open('https://huggingface.co/settings/tokens', '_blank')"
+                    class="px-4 py-2.5 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors text-sm font-medium"
+                >
+                    Get Hugging Face Key
+                </button>
+            </div>
+
+            <!-- Clear Form -->
+            <button 
+                type="button" 
+                onclick="clearForm()"
+                class="w-full px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+            >
+                Clear Form
+            </button>
+        </div>
+
+        {% if message %}
+        <div class="mt-4 p-4 rounded-lg {% if 'error' in message|lower %}bg-red-50 text-red-700 border border-red-200{% else %}bg-green-50 text-green-700 border border-green-200{% endif %}">
+            {{ message }}
+        </div>
+        {% endif %}
+    </form>
+</div>
+
+<script>
+function togglePassword(inputId) {
+    const input = document.getElementById(inputId);
+    const button = input.nextElementSibling;
+    input.type = input.type === 'password' ? 'text' : 'password';
+    button.textContent = input.type === 'password' ? 'View Key' : 'Hide Key';
+    
+    // Toggle button style
+    if (input.type === 'password') {
+        button.classList.remove('bg-yellow-100', 'text-yellow-600');
+        button.classList.add('bg-gray-100', 'text-gray-600');
+    } else {
+        button.classList.remove('bg-gray-100', 'text-gray-600');
+        button.classList.add('bg-yellow-100', 'text-yellow-600');
+    }
+}
+
+function clearForm() {
+    document.getElementById('apiKeyForm').reset();
+    const messageDiv = document.querySelector('.message-container');
+    if (messageDiv) {
+        messageDiv.remove();
+    }
+}
+
+document.getElementById('apiKeyForm').addEventListener('submit', function(e) {
+    const googleKey = document.getElementById('google_api_key').value;
+    const hfKey = document.getElementById('hf_api_key').value;
+    
+    const apiKeyPattern = /^[A-Za-z0-9-_]*$/;
+    
+    if (!apiKeyPattern.test(googleKey) || !apiKeyPattern.test(hfKey)) {
+        e.preventDefault();
+        alert('Invalid API key format. Please use only letters, numbers, hyphens, and underscores.');
+        return;
+    }
+
+    sessionStorage.setItem('googleApiKey', btoa(googleKey));
+    sessionStorage.setItem('hfApiKey', btoa(hfKey));
+});
+
+window.addEventListener('load', function() {
+    const storedGoogleKey = sessionStorage.getItem('googleApiKey');
+    const storedHfKey = sessionStorage.getItem('hfApiKey');
+    
+    if (storedGoogleKey) {
+        document.getElementById('google_api_key').value = atob(storedGoogleKey);
+    }
+    if (storedHfKey) {
+        document.getElementById('hf_api_key').value = atob(storedHfKey);
+    }
+});
+</script>
+{% endblock %}
