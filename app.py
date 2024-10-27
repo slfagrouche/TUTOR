@@ -1,241 +1,382 @@
 import os
-from pydub import AudioSegment
-import io
-from flask import Flask, request, render_template
+from flask import Flask, request, render_template, session, jsonify, flash
 import torch
-from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
+import torchaudio
+from transformers import pipeline
 from PyPDF2 import PdfReader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-from langchain.vectorstores import FAISS
-from langchain.chains.question_answering import load_qa_chain
-from langchain.prompts import PromptTemplate
-import librosa
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_core.messages import HumanMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
+import soundfile as sf
+import numpy as np
 import requests
 from dotenv import load_dotenv
+from functools import lru_cache
+import wave
+import secrets
+import hashlib
+from werkzeug.utils import secure_filename
+from pathlib import Path
 
+# Load environment variables
 load_dotenv()
 
+# Initialize Flask app
 app = Flask(__name__)
+app.secret_key = os.getenv('FLASK_SECRET_KEY', os.urandom(24))
 
-# Load API keys from environment variables
+# Configure file upload settings
+UPLOAD_FOLDER = Path('uploads')
+ALLOWED_EXTENSIONS_AUDIO = {'mp3', 'wav'}
+ALLOWED_EXTENSIONS_PDF = {'pdf'}
+MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
+
+# Create upload folder if it doesn't exist
+UPLOAD_FOLDER.mkdir(exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
+
+# Global variables for API keys
 google_api_key = os.getenv("GOOGLE_API_KEY")
 hf_api_key = os.getenv("HF_API_KEY")
 
-# Initialize and configure the Whisper and PDF processing tools
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
-torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+def allowed_file(filename, allowed_extensions):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_extensions
 
-# Load Whisper model
-model_id = "openai/whisper-large-v3"
-model = AutoModelForSpeechSeq2Seq.from_pretrained(model_id, torch_dtype=torch_dtype, use_safetensors=True)
-model.to(device)
-processor = AutoProcessor.from_pretrained(model_id)
+def validate_api_key(api_key):
+    """Validate API key format"""
+    if not api_key:
+        return False
+    return bool(api_key.strip()) and api_key.replace('-', '').replace('_', '').isalnum()
 
-# Define the ASR pipeline
-asr_pipeline = pipeline("automatic-speech-recognition", model=model, tokenizer=processor.tokenizer,
-                        feature_extractor=processor.feature_extractor, device=device)
+def get_api_keys():
+    """Get API keys from session or environment"""
+    return google_api_key, hf_api_key
 
-def convert_mp3_to_wav(mp3_audio):
-    """
-    Convert an MP3 audio file to WAV format.
+@lru_cache(maxsize=1)
+def get_asr_pipeline():
+    """Initialize ASR pipeline with caching"""
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    return pipeline(
+        "automatic-speech-recognition",
+        model="openai/whisper-base",
+        device=device,
+    )
 
-    Args:
-        mp3_audio (FileStorage): MP3 audio file uploaded by the user.
+@lru_cache(maxsize=1)
+def get_embeddings_model(api_key):
+    """Initialize embeddings model with caching"""
+    if not validate_api_key(api_key):
+        raise ValueError("Invalid Google API key")
+    return GoogleGenerativeAIEmbeddings(
+        model="models/embedding-001",
+        google_api_key=api_key
+    )
 
-    Returns:
-        BytesIO: WAV audio file.
-    """
-    mp3_path = mp3_audio.stream
-    mp3_sound = AudioSegment.from_file(mp3_path, format="mp3")
-    buffer = io.BytesIO()
-    mp3_sound.export(buffer, format="wav")
-    buffer.seek(0)
-    return buffer
+def convert_mp3_to_wav(mp3_file):
+    """Convert MP3 to WAV format"""
+    try:
+        waveform, sample_rate = torchaudio.load(mp3_file)
+        if waveform.shape[0] > 1:
+            waveform = torch.mean(waveform, dim=0, keepdim=True)
+        if sample_rate != 16000:
+            resampler = torchaudio.transforms.Resample(sample_rate, 16000)
+            waveform = resampler(waveform)
+        
+        wav_path = UPLOAD_FOLDER / f"{secure_filename(mp3_file.filename)}.wav"
+        torchaudio.save(wav_path, waveform, 16000)
+        return wav_path
+    except Exception as e:
+        raise ValueError(f"Error converting audio file: {str(e)}")
 
-def transcribe_audio(audio):
-    """
-    Transcribe an audio file to text using the ASR pipeline.
-
-    Args:
-        audio (FileStorage): Audio file uploaded by the user.
-
-    Returns:
-        str: Transcribed text from the audio.
-    """
-    if audio.filename.endswith('.mp3'):
-        audio = convert_mp3_to_wav(audio)
-    
-    audio_data, sr = librosa.load(audio, sr=16000)
-    result = asr_pipeline({"array": audio_data, "sampling_rate": sr})
-    return result['text']
+def transcribe_audio(audio_file):
+    """Transcribe audio file to text"""
+    try:
+        if audio_file.filename.endswith('.mp3'):
+            wav_path = convert_mp3_to_wav(audio_file)
+            audio_data, sr = sf.read(wav_path)
+            wav_path.unlink()  # Clean up temporary file
+        else:
+            audio_data, sr = sf.read(audio_file)
+        
+        if sr != 16000:
+            audio_data = np.interp(
+                np.linspace(0, len(audio_data), int(len(audio_data) * 16000/sr)),
+                np.arange(len(audio_data)),
+                audio_data
+            )
+        
+        asr_pipeline = get_asr_pipeline()
+        result = asr_pipeline(
+            {"array": audio_data, "sampling_rate": 16000},
+            batch_size=8
+        )
+        return result['text']
+    except Exception as e:
+        raise ValueError(f"Error transcribing audio: {str(e)}")
 
 def get_pdf_text(pdf_file):
-    """
-    Extract text from a PDF file.
+    """Extract text from PDF file"""
+    try:
+        text = []
+        pdf_reader = PdfReader(pdf_file, strict=False)
+        for page in pdf_reader.pages:
+            chunk = page.extract_text()
+            if chunk:
+                text.append(' '.join(chunk.split()))
+        return ' '.join(text)
+    except Exception as e:
+        raise ValueError(f"Error processing PDF: {str(e)}")
 
-    Args:
-        pdf_file (FileStorage): PDF file uploaded by the user.
+def process_text(raw_text, user_question, api_key):
+    """Process text with LLM"""
+    try:
+        # Split text into chunks
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=20000,
+            chunk_overlap=1000,
+            length_function=len,
+            add_start_index=True,
+        )
+        chunks = text_splitter.create_documents([raw_text])
+        
+        if not chunks:
+            raise ValueError("No text content found to process")
 
-    Returns:
-        str: Extracted text from the PDF.
-    """
-    text = ""
-    pdf_reader = PdfReader(pdf_file)
-    for page in pdf_reader.pages:
-        page_text = page.extract_text()
-        if page_text:
-            text += page_text
-    return text
+        # Convert chunks to text
+        chunk_texts = [doc.page_content for doc in chunks]
+        
+        # Get embeddings
+        embeddings = get_embeddings_model(api_key)
+        query_embedding = embeddings.embed_query(user_question)
+        
+        # Perform similarity search
+        chunk_embeddings = [embeddings.embed_query(chunk) for chunk in chunk_texts]
+        similarities = [
+            np.dot(query_embedding, chunk_emb) / 
+            (np.linalg.norm(query_embedding) * np.linalg.norm(chunk_emb))
+            for chunk_emb in chunk_embeddings
+        ]
+        
+        # Get most relevant chunks
+        top_indices = np.argsort(similarities)[-2:]
+        relevant_chunks = [chunk_texts[i] for i in top_indices]
+        
+        # Initialize LLM
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-pro",
+            temperature=0.3,
+            google_api_key=api_key,
+            convert_system_message_to_human=True
+        )
+        
+        # Create prompt
+        template = """
+        Context information is below.
+        ---------------------
+        {context}
+        ---------------------
+        Using only the context information provided above and not any prior knowledge, answer the following question:
+        Question: {question}
+        
+        Answer:
+        """
+        
+        # Process query
+        context = "\n".join(relevant_chunks)
+        prompt = template.format(context=context, question=user_question)
+        messages = [HumanMessage(content=prompt)]
+        
+        # Get response
+        response = llm.invoke(messages)
+        return response.content
+        
+    except Exception as e:
+        raise ValueError(f"Error processing text: {str(e)}")
 
-def process_audio(audio, question):
-    """
-    Process an audio file and answer a question based on its content.
+def process_audio(audio, question, api_key):
+    """Process audio file and answer question"""
+    try:
+        transcription = transcribe_audio(audio)
+        if not transcription.strip():
+            raise ValueError("No text was extracted from the audio file")
+        return process_text(transcription, question, api_key)
+    except Exception as e:
+        raise ValueError(f"Error processing audio: {str(e)}")
 
-    Args:
-        audio (FileStorage): Audio file uploaded by the user.
-        question (str): User's question.
-
-    Returns:
-        str: Transcription and response based on the audio content.
-    """
-    transcription = transcribe_audio(audio)
-    response = answer_question(question, None, transcription)
-    return "Audio transcription and response: " + response
-
-def process_pdfs(pdfs, question):
-    """
-    Process PDF files and answer a question based on their content.
-
-    Args:
-        pdfs (list of FileStorage): List of PDF files uploaded by the user.
-        question (str): User's question.
-
-    Returns:
-        str: Extracted text and response based on the PDF content.
-    """
-    extracted_text = ""
-    for pdf in pdfs:
-        extracted_text += get_pdf_text(pdf)
-    response = answer_question(question, extracted_text, None)
-    return "PDF content and response: " + response
-
-def answer_question(user_question, pdf_text, audio_text):
-    """
-    Answer a user's question based on provided PDF or audio content.
-
-    Args:
-        user_question (str): User's question.
-        pdf_text (str): Text extracted from PDF files.
-        audio_text (str): Transcribed text from audio files.
-
-    Returns:
-        str: Response to the user's question.
-    """
-    raw_text = (pdf_text if pdf_text else "") + (audio_text if audio_text else "")
-    if raw_text == "":
-        return "No content to process. Please upload a PDF or audio file."
-
-    text_chunks = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=1000).split_text(raw_text)
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=google_api_key)
-    vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
-    docs = vector_store.similarity_search(user_question)
-
-    prompt_template = """
-    Based on the educational material provided—answer the student's question in detail.
-
-    Uploaded Educational Material:
-    {context}
-
-    Student's Question:
-    {question}
-
-    Tutor's Response:
-    """
-    model = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.5, google_api_key=google_api_key)
-    prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
-    chain = load_qa_chain(model, prompt=prompt)
-
-    response = chain({"input_documents": docs, "question": user_question}, return_only_outputs=True)
-    return response["output_text"]
+def process_pdfs(pdfs, question, api_key):
+    """Process PDF files and answer question"""
+    try:
+        extracted_texts = []
+        for pdf in pdfs:
+            text = get_pdf_text(pdf)
+            if text.strip():  # Only add non-empty texts
+                extracted_texts.append(text)
+        
+        if not extracted_texts:
+            raise ValueError("No text could be extracted from the PDF files")
+            
+        combined_text = ' '.join(extracted_texts)
+        return process_text(combined_text, question, api_key)
+    except Exception as e:
+        raise ValueError(f"Error processing PDFs: {str(e)}")
 
 @app.route('/')
 def index():
-    """
-    Render the index page.
-
-    Returns:
-        str: Rendered HTML template for the index page.
-    """
+    """Home page route"""
     return render_template('index.html')
 
 @app.route('/audio', methods=['GET', 'POST'])
 def audio():
-    """
-    Handle audio file uploads and process them to answer a user's question.
-
-    Returns:
-        str: Rendered HTML template with the response.
-    """
+    """Audio processing route"""
     if request.method == 'POST':
-        audio = request.files['audio']
-        question = request.form.get('question')
-        response = process_audio(audio, question)
-        return render_template('audio.html', response=response)
-    return render_template('audio.html', response=None)
+        try:
+            if 'audio' not in request.files:
+                raise ValueError("No audio file uploaded")
+            
+            audio = request.files['audio']
+            if not audio or not allowed_file(audio.filename, ALLOWED_EXTENSIONS_AUDIO):
+                raise ValueError("Invalid audio file format. Only MP3 and WAV files are allowed.")
+            
+            question = request.form.get('question')
+            if not question:
+                raise ValueError("Please provide a question")
+            
+            google_key, _ = get_api_keys()
+            if not validate_api_key(google_key):
+                raise ValueError("Invalid or missing Google API key. Please update it in API Keys page.")
+            
+            response = process_audio(audio, question, google_key)
+            return render_template('audio.html', response=response)
+        except Exception as e:
+            error_message = str(e)
+            return render_template('audio.html', error=error_message), 400
+            
+    return render_template('audio.html')
 
 @app.route('/pdf', methods=['GET', 'POST'])
 def pdf():
-    """
-    Handle PDF file uploads and process them to answer a user's question.
-
-    Returns:
-        str: Rendered HTML template with the response.
-    """
+    """PDF processing route"""
     if request.method == 'POST':
-        pdfs = request.files.getlist('pdf')
-        question = request.form.get('question')
-        response = process_pdfs(pdfs, question)
-        return render_template('pdf.html', response=response)
-    return render_template('pdf.html', response=None)
+        try:
+            if 'pdf' not in request.files:
+                raise ValueError("No PDF files uploaded")
+            
+            files = request.files.getlist('pdf')
+            if not files or len(files) == 0:
+                raise ValueError("No PDF files selected")
+            
+            for file in files:
+                if not file.filename or not allowed_file(file.filename, ALLOWED_EXTENSIONS_PDF):
+                    raise ValueError(f"Invalid file format: {file.filename}. Only PDF files are allowed.")
+            
+            question = request.form.get('question')
+            if not question:
+                raise ValueError("Please provide a question")
+            
+            google_key, _ = get_api_keys()
+            if not validate_api_key(google_key):
+                raise ValueError("Invalid or missing Google API key. Please update it in API Keys page.")
+            
+            response = process_pdfs(files, question, google_key)
+            return render_template('pdf.html', response=response)
+        except Exception as e:
+            error_message = str(e)
+            return render_template('pdf.html', error=error_message), 400
+            
+    return render_template('pdf.html')
+
+@app.route('/apikey', methods=['GET', 'POST'])
+def apikey():
+    """API key management route"""
+    if request.method == 'POST':
+        try:
+            new_google_key = request.form.get('google_api_key')
+            new_hf_key = request.form.get('hf_api_key')
+            
+            # Validate API keys
+            if not all([new_google_key, new_hf_key]):
+                raise ValueError("Both API keys are required")
+            
+            if not all(validate_api_key(key) for key in [new_google_key, new_hf_key]):
+                raise ValueError("Invalid API key format")
+            
+            # Update global variables
+            global google_api_key, hf_api_key
+            google_api_key = new_google_key
+            hf_api_key = new_hf_key
+            
+            flash("API keys updated successfully", 'success')
+            return render_template('apikey.html', message="API keys updated successfully")
+        except Exception as e:
+            error_message = str(e)
+            flash(error_message, 'error')
+            return render_template('apikey.html', error=error_message), 400
+            
+    return render_template('apikey.html')
 
 @app.route('/general', methods=['GET', 'POST'])
 def general():
-    """
-    Handle general questions and provide responses using an AI model.
-
-    Returns:
-        str: Rendered HTML template with the response.
-    """
+    """General question answering route"""
     if request.method == 'POST':
-        question = request.form.get('question')
-        response = answer_general_question(question)
-        return render_template('general.html', response=response)
-    return render_template('general.html', response=None)
+        try:
+            question = request.form.get('question')
+            if not question:
+                raise ValueError("Please provide a question")
+            
+            _, hf_key = get_api_keys()
+            if not validate_api_key(hf_key):
+                raise ValueError("Invalid or missing Hugging Face API key. Please update it in API Keys page.")
+            
+            API_URL = "https://api-inference.huggingface.co/models/google/gemma-1.1-7b-it"
+            headers = {"Authorization": f"Bearer {hf_key}"}
+            response = requests.post(
+                API_URL,
+                headers=headers,
+                json={
+                    "inputs": f"Question: {question}\nAnswer:",
+                    "parameters": {"max_length": 1024, "temperature": 0.3}
+                }
+            )
+            
+            if response.status_code != 200:
+                raise ValueError("Error getting response from model")
+                
+            result = response.json()[0]['generated_text']
+            return render_template('general.html', response=result)
+        except Exception as e:
+            error_message = str(e)
+            return render_template('general.html', error=error_message), 400
+            
+    return render_template('general.html')
 
-def answer_general_question(user_question):
-    """
-    Answer a general question using an AI model.
+@app.route('/check-api-keys')
+def check_api_keys():
+    """Check API key status"""
+    google_key, hf_key = get_api_keys()
+    if validate_api_key(google_key) and validate_api_key(hf_key):
+        return jsonify({
+            'status': 'valid',
+            'message': 'API keys are set'
+        })
+    return jsonify({
+        'status': 'invalid',
+        'message': 'One or more API keys are invalid or not set'
+    }), 401
 
-    Args:
-        user_question (str): User's question.
+# Error handlers
+@app.errorhandler(404)
+def not_found_error(error):
+    return render_template('error.html', error="Page not found"), 404
 
-    Returns:
-        str: AI-generated response to the question.
-    """
-    API_URL = "https://api-inference.huggingface.co/models/google/gemma-1.1-7b-it"
-    headers = {"Authorization": f"Bearer {hf_api_key}"}
+@app.errorhandler(500)
+def internal_error(error):
+    return render_template('error.html', error="Internal server error"), 500
 
-    prompt = f"You are General AI Tutor, helping students with homework and general questions. Student question: {user_question}. Response: should be clear and detailed."
-
-    def query(payload):
-        response = requests.post(API_URL, headers=headers, json=payload)
-        return response.json()
-
-    output = query({"inputs": prompt})
-    return f"AI Response: '{output[0]['generated_text']}'"
+@app.errorhandler(413)
+def file_too_large(error):
+    return render_template('error.html', error=f"File too large. Maximum size is {MAX_CONTENT_LENGTH/(1024*1024)}MB"), 413
 
 if __name__ == '__main__':
-    app.run(debug=True)
-
-
+    app.run(debug=False)
