@@ -6,11 +6,11 @@ build:
       - pip install --upgrade pip
       - pip install -r requirements.txt
 run:
-  runtime-version: 3.12.0
+  runtime-version: 3.9
   command: python -m flask run --host=0.0.0.0 --port=8080
   network:
     port: 8080
-  env:                     # Changed from environment-variables to env
+  environment-variables:
     - name: FLASK_APP
       value: app.py
     - name: FLASK_ENV
