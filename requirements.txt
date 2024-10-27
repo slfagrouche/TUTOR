@@ -1,11 +1,37 @@
-Flask
-torch==2.2.0 --index-url https://download.pytorch.org/whl/cpu
-torchaudio==2.2.0 --index-url https://download.pytorch.org/whl/cpu
-transformers==4.37.2
-PyPDF2
-langchain
-langchain-google-genai
-soundfile
-numpy
-requests
-python-dotenv
+# Core dependencies
+pip>=23.3.2
+setuptools>=69.0.3
+wheel>=0.42.0
+
+# Web Framework
+flask>=3.0.0
+werkzeug>=3.0.1
+
+# ML & Audio Processing
+--find-links https://download.pytorch.org/whl/torch_stable.html
+torch>=2.2.0
+torchaudio>=2.2.0
+transformers>=4.37.2
+soundfile>=0.12.1
+numpy>=1.24.3
+
+# PDF Processing
+PyPDF2>=3.0.1
+
+# LangChain & AI
+langchain>=0.1.0
+langchain-core>=0.1.22
+langchain-google-genai>=0.0.5
+google-generativeai>=0.3.1
+google-cloud-aiplatform>=1.36.4
+
+# Utilities
+python-dotenv>=1.0.0
+requests>=2.31.0
+pathlib>=1.0.1
+
+# Optional Performance Improvements
+accelerate>=0.27.2
+optimum>=1.16.1
+bitsandbytes>=0.42.0
+scipy>=1.12.0
