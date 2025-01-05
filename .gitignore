@@ -1,0 +1,140 @@
+# ==============================
+# 🐍 Python Specific
+# ==============================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*$py.class
+*.so
+
+# C extensions
+*.so
+
+# Compiled Python files
+*.pyc
+*.pyo
+*.pyd
+
+# Environment Variables
+.env
+.env.*
+
+# ==============================
+# 📦 Virtual Environments
+# ==============================
+venv/
+env/
+ENV/
+.env/
+.venv/
+env.bak/
+venv.bak/
+myenv39/
+path/to/venv/
+
+# ==============================
+# 📄 Distribution / Packaging
+# ==============================
+*.egg-info/
+*.egg
+MANIFEST
+dist/
+build/
+develop-eggs/
+downloads/
+.eggs/
+.installed.cfg
+wheels/
+share/python-wheels/
+sdist/
+var/
+
+# ==============================
+# 🚀 Deployment Specific
+# ==============================
+Procfile
+Dockerfile
+.dockerignore
+.vercel
+.vercelignore
+*.slugignore
+
+# Heroku
+heroku.yml
+
+# ==============================
+# 🧪 Testing and Coverage
+# ==============================
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+*.cover
+.hypothesis/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+
+# ==============================
+# 📚 Documentation
+# ==============================
+docs/_build/
+*.mo
+*.pot
+
+# ==============================
+# 💻 IDEs and Editors
+# ==============================
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# JetBrains IDEs
+# Add JetBrains-specific gitignore if needed: 
+# https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
+
+# ==============================
+# 📊 Logs and Temporary Files
+# ==============================
+*.log
+logs/
+*.sqlite3
+*.db
+celerybeat-schedule
+celerybeat.pid
+
+# ==============================
+# 📂 Jupyter and IPython
+# ==============================
+.ipynb_checkpoints/
+profile_default/
+ipython_config.py
+
+# ==============================
+# 🔍 Static Analysis and Debugging
+# ==============================
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+cython_debug/
+
+# ==============================
+# ⚙️ Flask and Django Specific
+# ==============================
+instance/
+.webassets-cache
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# ==============================
+# 🚀 Deployment Platform Specific
+# ==============================
+DockerDesktop/
