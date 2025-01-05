@@ -1,9 +1,13 @@
 import os
 import io
+import re
 import requests
 import streamlit as st
 import librosa
+import torch
 from PyPDF2 import PdfReader
+from pydub import AudioSegment
+from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import FAISS
@@ -11,27 +15,31 @@ from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
 from dotenv import load_dotenv
 
-# --- Load Environment Variables ---
+# Load environment variables
 load_dotenv()
 
-# --- Initialize Session State for Navigation ---
+# Initialize session state
+if 'google_api_key_verified' not in st.session_state:
+    st.session_state.google_api_key_verified = False
 if 'page' not in st.session_state:
     st.session_state.page = 'Home'
+if 'show_api_input' not in st.session_state:
+    st.session_state.show_api_input = False
+
 
 def navigate_to(page):
     """Navigate between pages explicitly"""
     st.session_state.page = page
     st.rerun()
 
-# --- App Setup ---
-st.set_page_config(
-    page_title="AI Tutor",
-    page_icon="🤖",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+def check_api_key_requirement():
+    """Check if current page requires API key"""
+    if st.session_state.page in ["Upload PDF", "Upload Audio"]:
+        if not st.session_state.google_api_key_verified:
+            st.session_state.show_api_input = True
+            return False
+    return True
 
-# --- Utility Functions ---
 def validate_google_api_key(api_key):
     """Validate Google API Key"""
     try:
@@ -45,83 +53,156 @@ def validate_google_api_key(api_key):
             timeout=5
         )
         return response.ok
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Network or Request Error: {e}")
+    except requests.exceptions.RequestException:
         return False
 
+def answer_general_question(question):
+    """Use Hugging Face's Gemma-7B model for general questions"""
+    API_URL = "https://api-inference.huggingface.co/models/google/gemma-1.1-7b-it"
+    headers = {"Authorization": f"Bearer {os.getenv('HF_TOKEN')}"}
+    
+    payload = {
+        "inputs": f"{question}\nPlease format the response in clean Markdown.",
+        "parameters": {"max_new_tokens": 1000, "return_full_text": False}
+    }
+    
+    try:
+        response = requests.post(API_URL, headers=headers, json=payload)
+        response.raise_for_status()
+        output = response.json()
+        if isinstance(output, list) and 'generated_text' in output[0]:
+            raw_text = output[0]['generated_text']
+            clean_text = re.sub(re.escape(question), '', raw_text, flags=re.IGNORECASE).strip()
+            return clean_text
+        return "Unexpected API response. Please try again later."
+    except requests.exceptions.RequestException as e:
+        return f"Request failed: {e}"
 
 def get_pdf_text(pdf_file):
     """Extract text from PDF"""
     text = ""
     pdf_reader = PdfReader(pdf_file)
     for page in pdf_reader.pages:
-        page_text = page.extract_text()
-        if page_text:
-            text += page_text
+        text += page.extract_text() or ""
     return text
 
-
+# Audio Processing Functions
 def transcribe_audio(audio):
-    """Transcribe audio file"""
-    audio_data, sr = librosa.load(io.BytesIO(audio.read()), sr=16000)
-    return "Audio transcription feature under development."
+    # Initialize and configure the Whisper and PDF processing tools
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
+    # Load Whisper model
+    model_id = "openai/whisper-large-v3"
+    model = AutoModelForSpeechSeq2Seq.from_pretrained(
+        model_id, 
+        torch_dtype=torch_dtype, 
+        use_safetensors=True
+    )
+    model.to(device)
+    processor = AutoProcessor.from_pretrained(model_id)
+
+    # Define the ASR pipeline
+    asr_pipeline = pipeline(
+        "automatic-speech-recognition", 
+        model=model, 
+        tokenizer=processor.tokenizer,
+        feature_extractor=processor.feature_extractor, 
+        device=device,
+        return_timestamps=True
+    )
+    audio_data, sr = librosa.load(audio, sr=16000)
+    result = asr_pipeline({"array": audio_data, "sampling_rate": sr}, return_timestamps=True)
+    return result['text']
 
 def answer_question(user_question, pdf_text=None, audio_text=None):
-    """Answer a question based on PDF or Audio text"""
+    """Answer questions using either Google API or Hugging Face"""
+    if not pdf_text and not audio_text:
+        # Use Hugging Face for general questions
+        return answer_general_question(user_question)
+    
+    # Use Google API for document-based questions
     raw_text = (pdf_text or "") + (audio_text or "")
-    if raw_text == "":
-        return "No content to process. Please upload a PDF or audio file."
-
     text_chunks = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=1000).split_text(raw_text)
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=os.getenv("GOOGLE_API_KEY"))
+    
+    embeddings = GoogleGenerativeAIEmbeddings(
+        model="models/embedding-001",
+        google_api_key=st.session_state.google_api_key
+    )
     vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
     docs = vector_store.similarity_search(user_question)
-
+    
     prompt_template = """
     Based on the educational material provided—answer the student's question in detail.
-
+    
     Uploaded Educational Material:
     {context}
-
+    
     Student's Question:
     {question}
-
+    
     Tutor's Response:
     """
-    llm_model = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.5, google_api_key=os.getenv("GOOGLE_API_KEY"))
+    
+    llm_model = ChatGoogleGenerativeAI(
+        model="gemini-pro",
+        temperature=0.5,
+        google_api_key=st.session_state.google_api_key
+    )
     prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
     chain = load_qa_chain(llm_model, prompt=prompt)
-
+    
     response = chain({"input_documents": docs, "question": user_question}, return_only_outputs=True)
     return response["output_text"]
 
+# App Configuration
+st.set_page_config(
+    page_title="AI Tutor",
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# --- Sidebar for API Key ---
+# Sidebar Navigation
 with st.sidebar:
-    st.markdown("## 🔑 **Setup API Key**")
-    st.write("Enter your **Google API Key** to unlock all features of the AI Tutor.")
-    api_key = st.text_input("Enter your Google API Key", type="password")
-    if st.button("Validate API Key"):
-        if validate_google_api_key(api_key):
-            st.success("✅ API Key is valid!")
-            os.environ["GOOGLE_API_KEY"] = api_key
-        else:
-            st.error("❌ Invalid API Key. Please try again.")
-    st.write("---")
-    st.markdown("**Navigate:**")
-    if st.button("🏠 Home"):
+    st.title("Navigation")
+    if st.button("🏠 Home"): 
+        st.session_state.show_api_input = False
         navigate_to("Home")
-    if st.button("📄 Upload PDF"):
-        navigate_to("Upload PDF")
-    if st.button("🎙️ Upload Audio"):
-        navigate_to("Upload Audio")
-    if st.button("💬 Ask Questions"):
+    if st.button("💬 Ask Questions"): 
+        st.session_state.show_api_input = False
         navigate_to("Ask General Questions")
+    if st.button("📄 Upload PDF"): navigate_to("Upload PDF")
+    if st.button("🎙️ Upload Audio"): navigate_to("Upload Audio")
+    
+    if st.session_state.google_api_key_verified:
+        st.markdown("---")
+        if st.button("Reset API Key"):
+            st.session_state.google_api_key_verified = False
+            st.session_state.show_api_input = False
+            st.rerun()
 
+# API Key Input Modal
+if st.session_state.show_api_input:
+    with st.form(key='api_key_form'):
+        st.markdown("""
+        ### 🔑 API Key Required
+        To use this feature, please provide your Google API Key for document analysis.
+        """)
+        google_api_key = st.text_input("Enter your Google API Key", type="password")
+        submit_button = st.form_submit_button("Verify API Key")
+        
+        if submit_button:
+            if validate_google_api_key(google_api_key):
+                st.session_state.google_api_key = google_api_key
+                st.session_state.google_api_key_verified = True
+                st.session_state.show_api_input = False
+                st.success("✅ Google API Key verified successfully!")
+                st.rerun()
+            else:
+                st.error("❌ Invalid Google API Key")
 
-# --- Navigation Logic ---
-# --- Home Page with Improved Button Layout ---
+# Main Content Pages
 if st.session_state.page == "Home":
     st.markdown("""
     <style>
@@ -250,26 +331,26 @@ if st.session_state.page == "Home":
 
 elif st.session_state.page == "Upload PDF":
     st.header("📄 Upload PDFs")
-    uploaded_pdfs = st.file_uploader("Upload PDF Files", type=["pdf"], accept_multiple_files=True)
-    question = st.text_input("Ask a question about the PDFs:")
-    if st.button("Submit PDF Question"):
-        if uploaded_pdfs and question:
-            raw_text = "".join([get_pdf_text(pdf) for pdf in uploaded_pdfs])
-            response = answer_question(question, raw_text, None)
-            st.write("### 📚 Response:")
-            st.markdown(response)
-    if st.button("Back to Home"):
-        navigate_to("Home")
+    if check_api_key_requirement():
+        uploaded_pdfs = st.file_uploader("Upload PDF Files", type=["pdf"], accept_multiple_files=True)
+        question = st.text_input("Ask a question about the PDFs:")
+        if st.button("Submit PDF Question"):
+            if uploaded_pdfs and question:
+                raw_text = "".join([get_pdf_text(pdf) for pdf in uploaded_pdfs])
+                response = answer_question(question, raw_text, None)
+                st.write("### 📚 Response:")
+                st.markdown(response)
 
 elif st.session_state.page == "Upload Audio":
     st.header("🎙️ Upload Audio")
-    uploaded_audio = st.file_uploader("Upload an audio file", type=["mp3", "wav"])
-    question = st.text_input("Ask a question about the audio:")
-    if st.button("Submit Audio Question"):
-        audio_text = transcribe_audio(uploaded_audio)
-        response = answer_question(question, None, audio_text)
-        st.write("### 🎤 Response:")
-        st.markdown(response)
+    if check_api_key_requirement():
+        uploaded_audio = st.file_uploader("Upload an audio file", type=["mp3", "wav"])
+        question = st.text_input("Ask a question about the audio:")
+        if st.button("Submit Audio Question"):
+            audio_text = transcribe_audio(uploaded_audio)
+            response = answer_question(question, None, audio_text)
+            st.write("### 🎤 Response:")
+            st.markdown(response)
 
 elif st.session_state.page == "Ask General Questions":
     st.header("💬 Ask a General Question")
@@ -279,11 +360,6 @@ elif st.session_state.page == "Ask General Questions":
         st.write("### 🤖 Response:")
         st.markdown(response)
 
-# --- Footer ---
-st.markdown("""
-<hr>
-<div style='text-align: center; font-size: 14px;'>
-    <p>Built with ❤️ using <b>Streamlit</b>, <b>LangChain</b>, and <b>Google Generative AI</b>.</p>
-    <p>🛠️ <b>Developed by Said Lfagrouche</b.</p>
-</div>
-""", unsafe_allow_html=True)
+# Footer
+st.markdown("---")
+st.markdown("Built with ❤️ using Streamlit, LangChain, and AI models")
