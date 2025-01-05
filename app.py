@@ -2,7 +2,7 @@ import os
 import io
 import re
 import requests
-# import torch
+import torch
 import librosa
 
 from pydub import AudioSegment
@@ -21,28 +21,30 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY")
 
-# # Initialize and configure the Whisper and PDF processing tools
-# device = "cuda:0" if torch.cuda.is_available() else "cpu"
-# torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
-# # Load Whisper model
-# model_id = "openai/whisper-large-v3"
-# model = AutoModelForSpeechSeq2Seq.from_pretrained(
-#     model_id, 
-#     torch_dtype=torch_dtype, 
-#     use_safetensors=True
-# )
-# model.to(device)
-# processor = AutoProcessor.from_pretrained(model_id)
+# Initialize and configure the Whisper and PDF processing tools
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
+torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
-# # Define the ASR pipeline
-# asr_pipeline = pipeline(
-#     "automatic-speech-recognition", 
-#     model=model, 
-#     tokenizer=processor.tokenizer,
-#     feature_extractor=processor.feature_extractor, 
-#     device=device
-# )
+# Load Whisper model
+model_id = "openai/whisper-large-v3"
+model = AutoModelForSpeechSeq2Seq.from_pretrained(
+    model_id, 
+    torch_dtype=torch_dtype, 
+    use_safetensors=True
+)
+model.to(device)
+processor = AutoProcessor.from_pretrained(model_id)
+
+# Define the ASR pipeline
+asr_pipeline = pipeline(
+    "automatic-speech-recognition", 
+    model=model, 
+    tokenizer=processor.tokenizer,
+    feature_extractor=processor.feature_extractor, 
+    device=device,
+    return_timestamps=True
+)
 
 # Middleware to ensure Google API Key is set
 @app.before_request
@@ -116,7 +118,7 @@ def transcribe_audio(audio):
         audio = convert_mp3_to_wav(audio)
     
     audio_data, sr = librosa.load(audio, sr=16000)
-    result = asr_pipeline({"array": audio_data, "sampling_rate": sr})
+    result = asr_pipeline({"array": audio_data, "sampling_rate": sr}, return_timestamps=True)
     return result['text']
 
 # PDF Processing Function
@@ -177,13 +179,13 @@ def audio():
     if request.method == 'POST':
         audio_file = request.files['audio']
         question = request.form.get('question')
-        # response = process_audio(audio_file, question)
-        response = "Error processing audio :( Sorry about that, Said is working on it!"
+        response = process_audio(audio_file, question)
         return render_template('audio.html', response=response)
     return render_template('audio.html', response=None)
 
 def process_audio(audio_file, question):
     audio_text = transcribe_audio(audio_file)
+    print("HEHE", audio_text)
     return answer_question(question, None, audio_text)
 
 @app.route('/pdf', methods=['GET', 'POST'])
@@ -241,5 +243,4 @@ def process_pdfs(pdfs, question):
     return answer_question(question, extracted_text, None)
 
 if __name__ == '__main__':
-    # Use debug=False in production
-    app.run(debug=True)
+    app.run()
