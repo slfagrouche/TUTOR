@@ -90,6 +90,12 @@ Distributed under the **MIT License**. See the `LICENSE` file for more informati
 
 ---
 
+## ⚠️ Disclaimer  
+
+Please see [DISCLAIMER.md](DISCLAIMER.md) for important information about AI-generated content and its limitations.  
+
+---
+
 For further assistance, reach out via [GitHub Issues](https://github.com/slfagrouche/TUTOR/issues).
 
 Happy Coding! :)
