@@ -1,0 +1,30 @@
+{% extends 'layout.html' %}
+{% block content %}
+<section style="max-width: 600px; margin: 2rem auto; padding: 1rem; border: 1px solid #ddd; border-radius: 6px;">
+    <h1 style="text-align: center; margin-bottom: 1rem;">Setup Google API Key</h1>
+    <p>Please enter your Google API key to continue:</p>
+    <p>You can find instructions on how to obtain a Google API key at 
+        <a href="https://cloud.google.com/docs/authentication/api-keys" target="_blank">
+            this documentation
+        </a>.
+    </p>
+    <form action="/setup" method="post" style="margin-top: 1rem;">
+        <input 
+            type="text" 
+            name="google_api_key" 
+            placeholder="Enter your Google API Key" 
+            required 
+            style="width: 100%; padding: 0.5rem; margin-bottom: 1rem; border: 1px solid #ccc; border-radius: 4px;"
+        />
+        <button 
+            type="submit" 
+            style="background-color: #007BFF; color: white; padding: 0.5rem 1.5rem; border: none; border-radius: 4px; cursor: pointer;"
+        >
+            Save Key
+        </button>
+    </form>
+    {% if error %}
+        <p style="color: red; margin-top: 1rem;">{{ error }}</p>
+    {% endif %}
+</section>
+{% endblock %}

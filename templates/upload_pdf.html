@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<h3>Upload PDF Files</h3>
+<form action="{{ url_for('upload_pdf') }}" method="post" enctype="multipart/form-data">
+    <input type="file" name="pdf" multiple accept="application/pdf">
+    <button type="submit">Submit</button>
+</form>
+{% for response in responses %}
+    <div id="response">
+        <h4>Extracted Text:</h4>
+        <p>{{ response }}</p>
+    </div>
+{% endfor %}
+{% endblock %}

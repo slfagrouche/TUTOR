@@ -1,0 +1,20 @@
+{% extends 'layout.html' %}
+{% block content %}
+<h1>Ask the AI Tutor</h1>
+
+<form action="/general" method="post">
+    <input type="text" name="question" placeholder="What would you like to know?" required>
+    <button type="submit">Ask</button>
+</form>
+
+{% if response %}
+<div class="response-container">
+    <md-block>
+        {{ response | safe }}
+    </md-block>
+</div>
+{% endif %}
+
+<!-- Include md-block script -->
+<script type="module" src="https://md-block.verou.me/md-block.js"></script>
+{% endblock %}
