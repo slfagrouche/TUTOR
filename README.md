@@ -1,8 +1,14 @@
 # **TUTOR**
 
-![TUTOR Logo](logo.webp)
-
 **TUTOR** is an AI-powered educational assistant designed to help users with **audio transcription**, **PDF text extraction**, and **question answering**. It leverages advanced AI models and **Retrieval-Augmented Generation (RAG)** to provide accurate and contextually relevant responses based on uploaded content.
+
+![alt text](static/logo.gif)
+
+![Flask](https://img.shields.io/badge/Flask-3.1.0-blue?style=flat&logo=flask)
+![LangChain](https://img.shields.io/badge/LangChain-0.3.13-brightgreen?style=flat)
+![Transformers](https://img.shields.io/badge/Transformers-4.47.1-orange?style=flat&logo=huggingface)
+![Torch](https://img.shields.io/badge/Torch-2.5.1-red?style=flat&logo=pytorch)
+![Google%20Generative%20AI](https://img.shields.io/badge/Google%20Generative%20AI-0.8.3-yellow?style=flat)
 
 ---
 
@@ -29,8 +35,9 @@ This ensures:
 ## 🌐 **Try Out TUTOR**
 
 - **Streamlit Version:** Try the online version of TUTOR directly at **[Streamlit App Link](#)**.
-- **Web App Version:** The Flask web app version needs to be installed and run locally following the [Setup Instructions](setup/setup-instructions.md).
-
+- **Web App Version:** The Flask web app version needs to be installed and run locally following the [Setup Instructions](setup/setup-instructions.md). and demo is here for web app
+   - 🖼️ **Web App Demo [(Screenshots Preview)](webAppDemo.md)**
+   
 ---
 
 ## ⚙️ **Setup Instructions**

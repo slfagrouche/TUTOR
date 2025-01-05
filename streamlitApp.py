@@ -59,7 +59,7 @@ def validate_google_api_key(api_key):
 def answer_general_question(question):
     """Use Hugging Face's Gemma-7B model for general questions"""
     API_URL = "https://api-inference.huggingface.co/models/google/gemma-1.1-7b-it"
-    headers = {"Authorization": f"Bearer {os.getenv('HF_TOKEN')}"}
+    headers = {"Authorization": f"Bearer {os.getenv('HF_API_KEY')}"}
     
     payload = {
         "inputs": f"{question}\nPlease format the response in clean Markdown.",
